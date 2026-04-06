@@ -140,8 +140,10 @@ function moonAngleAtJD(m, jd) {
 	const ep = MOON_EPOCHS[m.id];
 	if (!ep) return 0;
 	const daysSinceJ2000 = jd - J2000_JD;
-	const dir = m.period < 0 ? -1 : 1;
-	return ((ep.L0 + ep.dLdt * daysSinceJ2000 * dir) % 360) * Math.PI / 180;
+	// dLdt already encodes retrograde via sign (e.g. Triton is negative)
+	const deg = ep.L0 + ep.dLdt * daysSinceJ2000;
+	// Safe modulo — always returns 0..2π even for large negative values
+	return (((deg % 360) + 360) % 360) * Math.PI / 180;
 }
 
 MOONS.forEach(m => { m.sceneR = m.realR * KM_TO_SCENE; m.sceneOrb = moonOrbToScene(m.orbR_km); m.angle = 0; });
@@ -491,11 +493,12 @@ function updateAllPositions(dtSimSec) {
 		const parentPos = planetWorldPos[m.parent]; if (!parentPos) return;
 		// Compute angle directly from simJD using real epoch data — no accumulation drift
 		const angle = moonAngleAtJD(m, simJD);
-		// Orbital plane: tilt applied on Y axis for inclination approximation
-		const tiltRad = m.tilt * Math.PI / 180;
+		// Orbital inclination: small Y offset proportional to sin(tilt), keeps orbit visually correct
+		// without distorting the XZ orbital plane (which would break surface-view camera)
+		const tiltFactor = Math.sin(m.tilt * Math.PI / 180) * 0.12;
 		const mx = parentPos.x + Math.cos(angle) * m.sceneOrb;
-		const my = parentPos.y + Math.sin(tiltRad) * Math.sin(angle) * m.sceneOrb;
-		const mz = parentPos.z + Math.sin(angle) * m.sceneOrb * Math.cos(tiltRad);
+		const my = parentPos.y + tiltFactor * m.sceneOrb * Math.sin(angle);
+		const mz = parentPos.z + Math.sin(angle) * m.sceneOrb;
 		moonMeshes[m.id].position.set(mx, my, mz);
 		moonMeshes[m.id].rotation.y += 0.002 * Math.sign(dtSimSec);
 	});
@@ -648,6 +651,7 @@ function selectBody(id, isMoon = false, mode = 'third-person') {
 
 function enterThirdPerson(id, isMoon) {
 	const data = getBodyData(id, isMoon); if (!data) return;
+	selectedId = id; selectedIsMoon = isMoon; povId = id; povIsMoon = isMoon;
 	camMode = 'third-person'; povMode = false;
 	const mesh = getBodyMesh(id, isMoon);
 	if (mesh) focusPoint.copy(mesh.position);
@@ -673,6 +677,7 @@ function enterThirdPerson(id, isMoon) {
 
 function enterSurface(id, isMoon) {
 	const data = getBodyData(id, isMoon); if (!data) return;
+	selectedId = id; selectedIsMoon = isMoon; povId = id; povIsMoon = isMoon;
 	camMode = 'surface'; povMode = true; povYaw = 0; povPitch = 0.05; povFOV = 60; tPovFOV = 60;
 	const name = data.name || id;
 	document.getElementById('view-name').textContent = name.toUpperCase();
@@ -718,9 +723,17 @@ function showViewModePanel(id, isMoon, activeMode) {
 	document.getElementById('vmp-tp').classList.toggle('active', activeMode === 'third-person');
 	document.getElementById('vmp-surface').classList.toggle('active', activeMode === 'surface');
 	document.getElementById('vmp-overview').classList.toggle('active', activeMode === 'overview');
+	// Store target so buttons work even when body was only hovered (selectedId may differ)
+	const panel = document.getElementById('viewmode-panel');
+	panel.dataset.targetId = id;
+	panel.dataset.targetIsMoon = isMoon ? '1' : '0';
 }
-document.getElementById('vmp-tp').addEventListener('click', () => { if (selectedId) enterThirdPerson(selectedId, selectedIsMoon); });
-document.getElementById('vmp-surface').addEventListener('click', () => { if (selectedId) enterSurface(selectedId, selectedIsMoon); });
+function vmpTarget() {
+	const panel = document.getElementById('viewmode-panel');
+	return { id: panel.dataset.targetId, isMoon: panel.dataset.targetIsMoon === '1' };
+}
+document.getElementById('vmp-tp').addEventListener('click', () => { const t = vmpTarget(); if (t.id) enterThirdPerson(t.id, t.isMoon); });
+document.getElementById('vmp-surface').addEventListener('click', () => { const t = vmpTarget(); if (t.id) enterSurface(t.id, t.isMoon); });
 document.getElementById('vmp-overview').addEventListener('click', () => { exitToOverview(); });
 document.getElementById('vmp-x').addEventListener('click', () => {
 	document.getElementById('viewmode-panel').classList.remove('hover', 'pinned');
