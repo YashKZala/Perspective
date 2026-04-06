@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PERSPECTIVE — Real-Time Solar System</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div id="loading">
+    <h2>Perspective</h2>
+    <div class="lbar">
+      <div class="lfill"></div>
+    </div>
+    <p>Loading real planet textures&hellip;</p>
+  </div>
+  <canvas id="cv"></canvas>
+  <div id="hdr">
+    <div id="logo">
+      <h1>Perspective</h1>
+      <p>Real-Time Solar System</p>
+    </div>
+    <div id="view-info">
+      <div id="view-name">Overview</div>
+      <div id="view-sub">Left-drag · Rotate &nbsp;|&nbsp; Right-drag and WASD · Pan &nbsp;|&nbsp; Scroll · Zoom</div>
+    </div>
+  </div>
+  <div id="dtbar">
+    <div id="dt-date">—</div>
+    <div id="dt-time">—</div>
+    <div id="dt-tz">—</div>
+    <div id="dt-open-cal"> Jump to date</div>
+  </div>
+  <div id="cal-modal">
+    <div id="cal-box">
+      <h2>Travel Through Time</h2>
+      <div class="cf"><label>Date</label><input type="date" id="cal-date"></div>
+      <div class="cf"><label>Time (local)</label><input type="time" id="cal-time" value="12:00"></div>
+      <div id="cal-btns">
+        <button class="cbtn" id="cal-go">Go</button>
+        <button class="cbtn" id="cal-now">Now</button>
+        <button class="cbtn" id="cal-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+  <svg id="labels-svg"></svg>
+  <div id="viewmode-panel">
+    <div id="vmp-title">View Mode</div>
+    <button id="vmp-x">✕</button>
+    <div id="vmp-body-name">—</div>
+    <button class="vm-btn active" id="vmp-tp">
+      <span class="vm-icon">🛸</span>
+      <span class="vm-label"><span>Third-Person</span><span class="vm-sub">Orbit around body</span></span>
+    </button>
+    <button class="vm-btn" id="vmp-surface">
+      <span class="vm-icon">🌐</span>
+      <span class="vm-label"><span>Surface View</span><span class="vm-sub">Stand on planet</span></span>
+    </button>
+    <button class="vm-btn" id="vmp-overview">
+      <span class="vm-icon">🌌</span>
+      <span class="vm-label"><span>Overview</span><span class="vm-sub">Solar system view</span></span>
+    </button>
+   
+  </div>
+  <div id="povflash">
+    <h3>Viewing from</h3>
+    <p id="povflash-name"></p>
+  </div>
+  <div id="esc">ESC · Return to Overview</div>
+  <div id="xhair"></div>
+  <div id="zoom-hint">Scroll · Zoom FOV</div>
+  <div id="infopanel">
+    <button id="ip-x">✕</button>
+    <span id="ip-pin"></span>
+    <div id="ip-name">—</div>
+    <div id="ip-type">—</div>
+    <div class="irow"><span class="ik">Distance</span><span class="iv" id="ip-dist">—</span></div>
+    <div class="irow"><span class="ik">Diameter</span><span class="iv" id="ip-diam">—</span></div>
+    <div class="irow"><span class="ik">Orbit</span><span class="iv" id="ip-orb">—</span></div>
+    <div class="irow"><span class="ik">Moons</span><span class="iv" id="ip-moons">—</span></div>
+    <div class="irow"><span class="ik">Tilt</span><span class="iv" id="ip-tilt">—</span></div>
+  </div>
+  <div id="pnav"></div>
+  <div id="ratebar">
+    <button id="rb-pause" title="Pause/Play">⏸</button>
+    <div class="rb-sep"></div>
+    <button id="rb-dir" title="Reverse time">⇄</button>
+    <div class="rb-sep"></div>
+    <div id="rate-slider-container">
+      <div id="rate-slider-label-display">Real Time</div>
+      <div id="rate-slider-track">
+        <div id="rate-slider-fill"></div>
+        <div id="rate-slider-ticks">
+          <div class="rate-tick" data-index="0" title="Real"><span class="tick-label">Real</span></div>
+          <div class="rate-tick" data-index="1" title="1h/s"><span class="tick-label">1h/s</span></div>
+          <div class="rate-tick" data-index="2" title="1d/s"><span class="tick-label">1d/s</span></div>
+          <div class="rate-tick" data-index="3" title="1mo/s"><span class="tick-label">1mo/s</span></div>
+          <div class="rate-tick" data-index="4" title="1yr/s"><span class="tick-label">1yr/s</span></div>
+          <div class="rate-tick" data-index="5" title="10yr/s"><span class="tick-label">10yr/s</span></div>
+        </div>
+        <input type="range" id="rate-slider" min="0" max="5" value="0">
+        <div id="rate-slider-thumb"></div>
+      </div>
+    </div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="script.js"></script>
+
+</body>
+
+</html>
