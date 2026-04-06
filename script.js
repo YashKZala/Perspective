@@ -160,15 +160,15 @@ renderer.toneMappingExposure = 0.55;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.0001, 20000);
 
-// Sun direct light — reduced intensity so planets aren't blown out
-// decay:2 = inverse-square falloff, distance:0 = infinite range
+// Sun direct light — primary source, inverse-square falloff
 const sunLight = new THREE.PointLight(0xfff4d6, 16, 0, 2);
 sunLight.position.set(0, 0, 0); scene.add(sunLight);
-// Warm secondary fill — simulates scattered solar diffusion, much weaker
+// Warm secondary fill — simulates scattered solar diffusion
 const fillLight = new THREE.PointLight(0xff9944, 12, 0, 2);
 fillLight.position.set(0, 0, 0); scene.add(fillLight);
-// Ambient — restored to original level for deep-space visibility
-scene.add(new THREE.AmbientLight(0x0d0d20, 0.9));
+// Ambient — raised so dark sides of planets/moons are dimly visible, not pitch black
+// Simulates faint starlight + interplanetary scattering
+scene.add(new THREE.AmbientLight(0x223355, 3.5));
 
 // ── MILKY WAY SKYBOX ─────────────────────────────────────
 (function () {
@@ -345,27 +345,72 @@ PLANETS.forEach(p => {
 	scene.add(mesh); meshes[p.id] = mesh;
 
 	if (isSun) {
-		// Sprite-based corona glow — no geometry disc artifacts
-		const spriteMat = new THREE.SpriteMaterial({
-			map: (() => {
-				const sc = document.createElement('canvas'); sc.width = sc.height = 256;
-				const sx = sc.getContext('2d');
-				const sg = sx.createRadialGradient(128, 128, 0, 128, 128, 128);
-				sg.addColorStop(0, 'rgba(255,240,120,1.0)');
-				sg.addColorStop(0.12, 'rgba(255,230,100,0.90)');
-				sg.addColorStop(0.25, 'rgba(255,190,60,0.75)');
-				sg.addColorStop(0.45, 'rgba(255,160,40,0.55)');
-				sg.addColorStop(0.70, 'rgba(250,140,40,0.35)');
-			sg.addColorStop(0.90, 'rgba(250,140,40,0.18)');
-				sg.addColorStop(1, 'rgba(0,0,0,0)');
-				sx.fillStyle = sg; sx.fillRect(0, 0, 256, 256);
-				return new THREE.CanvasTexture(sc);
-			})(),
-			transparent: true, depthWrite: false, blending: THREE.AdditiveBlending
+		// Multi-layer corona — each layer is a radial gradient sprite with AdditiveBlending
+		// Layers go from tight bright core to a vast, nearly-invisible outer halo
+		// so the glow dissolves smoothly into the black of space with no hard edge
+		const glowLayers = [
+			// [scale multiplier, gradient stops: [pos, r,g,b,a], ...]
+			{
+				scale: R * 10,
+				stops: [
+					[0.00, 255, 250, 180, 1.00],
+					[0.10, 255, 230, 120, 0.90],
+					[0.30, 255, 190,  60, 0.65],
+					[0.55, 255, 150,  30, 0.35],
+					[0.78, 240, 120,  20, 0.12],
+					[1.00, 200,  80,  10, 0.00],
+				]
+			},
+			{
+				scale: R * 28,
+				stops: [
+					[0.00, 255, 200,  80, 0.30],
+					[0.25, 255, 160,  40, 0.18],
+					[0.55, 240, 120,  20, 0.07],
+					[0.80, 200,  80,  10, 0.02],
+					[1.00, 160,  60,   0, 0.00],
+				]
+			},
+			{
+				scale: R * 60,
+				stops: [
+					[0.00, 255, 180,  60, 0.10],
+					[0.30, 240, 140,  30, 0.05],
+					[0.65, 200, 100,  10, 0.015],
+					[0.85, 160,  70,   0, 0.004],
+					[1.00, 120,  50,   0, 0.00],
+				]
+			},
+			{
+				scale: R * 130,
+				stops: [
+					[0.00, 255, 160,  40, 0.04],
+					[0.40, 220, 110,  20, 0.015],
+					[0.70, 180,  80,   0, 0.004],
+					[1.00, 120,  50,   0, 0.00],
+				]
+			},
+		];
+
+		glowLayers.forEach(layer => {
+			const sz = 512;
+			const gc = document.createElement('canvas'); gc.width = gc.height = sz;
+			const gx = gc.getContext('2d');
+			const gg = gx.createRadialGradient(sz/2, sz/2, 0, sz/2, sz/2, sz/2);
+			layer.stops.forEach(([pos, r, g, b, a]) => {
+				gg.addColorStop(pos, `rgba(${r},${g},${b},${a})`);
+			});
+			gx.fillStyle = gg; gx.fillRect(0, 0, sz, sz);
+			const spriteMat = new THREE.SpriteMaterial({
+				map: new THREE.CanvasTexture(gc),
+				transparent: true,
+				depthWrite: false,
+				blending: THREE.AdditiveBlending,
+			});
+			const sprite = new THREE.Sprite(spriteMat);
+			sprite.scale.set(layer.scale, layer.scale, 1);
+			meshes['sun'].add(sprite);
 		});
-		const sprite = new THREE.Sprite(spriteMat);
-		sprite.scale.set(R * 22, R * 22, 1);
-		meshes['sun'].add(sprite);
 	}
 
 	if (p.id === 'saturn') {
@@ -441,6 +486,7 @@ PLANETS.forEach(p => {
 	orbMesh.userData._isOrbit = true;
 	orbMesh.userData._orbCurve = orbCurve;
 	orbMesh.userData._orbBaseSize = orbBaseSize;
+	orbMesh.userData._planetId = p.id;
 	scene.add(orbMesh);
 	orbitMeshes.push(orbMesh);
 });
@@ -637,6 +683,16 @@ addEventListener('touchmove', e => {
 
 function lerp(a, b, t) { return a + (b - a) * t; }
 
+function setOrbitVisibility(hidePlanetId) {
+	// null        → show all orbits (overview)
+	// '__all__'   → hide all orbits (surface view)
+	// 'earth' etc → hide only that planet's orbit (third-person view)
+	orbitMeshes.forEach(om => {
+		if (hidePlanetId === '__all__') om.visible = false;
+		else om.visible = (om.userData._planetId !== hidePlanetId);
+	});
+}
+
 // ═══════════════════════════════════════════════════════════
 //  BODY SELECTION
 // ═══════════════════════════════════════════════════════════
@@ -653,6 +709,13 @@ function enterThirdPerson(id, isMoon) {
 	const data = getBodyData(id, isMoon); if (!data) return;
 	selectedId = id; selectedIsMoon = isMoon; povId = id; povIsMoon = isMoon;
 	camMode = 'third-person'; povMode = false;
+	// Hide only the selected body's own orbit line.
+	// Sun has no orbit, so pass null (show all) when sun is selected.
+	// For moons, hide the parent planet's orbit since we're zoomed into that system.
+	let hideId = null;
+	if (!isMoon && id !== 'sun') hideId = id;
+	else if (isMoon) hideId = MOONS.find(m => m.id === id).parent;
+	setOrbitVisibility(hideId);
 	const mesh = getBodyMesh(id, isMoon);
 	if (mesh) focusPoint.copy(mesh.position);
 	panOffset.set(0, 0, 0);
@@ -679,6 +742,9 @@ function enterSurface(id, isMoon) {
 	const data = getBodyData(id, isMoon); if (!data) return;
 	selectedId = id; selectedIsMoon = isMoon; povId = id; povIsMoon = isMoon;
 	camMode = 'surface'; povMode = true; povYaw = 0; povPitch = 0.05; povFOV = 60; tPovFOV = 60;
+	// In surface view hide ALL orbit lines — you're standing on the body,
+	// orbit paths cluttering the view make no sense
+	setOrbitVisibility('__all__');
 	const name = data.name || id;
 	document.getElementById('view-name').textContent = name.toUpperCase();
 	document.getElementById('view-sub').textContent = 'Surface · Hold & Drag to look';
@@ -698,6 +764,7 @@ function enterSurface(id, isMoon) {
 
 function exitToOverview() {
 	camMode = 'overview'; povMode = false; povId = null; povIsMoon = false; selectedId = null; selectedIsMoon = false;
+	setOrbitVisibility(null); // restore all orbit lines
 	focusPoint.set(0, 0, 0); panOffset.set(0, 0, 0);
 	orbitRadius = tOrbitRadius = 180; orbitTheta = tOrbitTheta = 0.7; orbitPhi = tOrbitPhi = Math.PI / 3.8;
 	document.getElementById('view-name').textContent = 'Overview';
